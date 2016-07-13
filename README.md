@@ -354,7 +354,7 @@ buildTypes {
 使用显示 的访问模式打开assets下指定的文件
 
 3. 加载assets目录下的网页：
-mWebView.loadUrl("file://android_asset/http/index.html");
+mWebView.loadUrl("file:///android_asset/http/index.html");
 > 这种方式可以加载assets目录下的网页，并且与网页相关的css, js, 图片等文件也会一起加载。
 
 ### 2、 Android应用全屏设置
@@ -484,6 +484,168 @@ intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
 startActivity(intent);
 ```
+
+### 4、ActionBar使用
+
+#### 1. 增加Action按钮
+- 在Menu.xml文件里增加item
+
+```
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_search"
+        android:icon="@drawable/ic_search"
+        android:title="@string/action_search"
+        app:actionViewClass="android.support.v7.widget.SearchView"
+        app:showAsAction="ifRoom|collapseActionView"/>
+
+    <item
+        android:id="@+id/action_favourite"
+        android:icon="@drawable/ic_favorite_red"
+        android:title="@string/favourite"
+        app:showAsAction="always"/>
+
+    <item
+        android:id="@+id/action_settings"
+        android:title="@string/action_settings"
+        app:showAsAction="never"/>
+
+</menu>
+```
+
+- 重写`onCreateOptionsMenu`方法，在里面加载menu布局
+```
+@Override
+public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.main_menu, menu);
+
+    return true;
+}
+```
+
+#### 2. 响应Action按钮
+重写`onOptionsItemSelected`方法，在里面处理相应按钮：
+```
+@Override
+public boolean onOptionsItemSelected(MenuItem item) {
+    switch (item.getItemId()) {
+        case R.id.action_favourite:
+            Intent intent = new Intent(MainActivity.this, FavoriteListActivity.class);
+            startActivity(intent);
+            return true;
+
+        case R.id.action_settings:
+            return true;
+
+        default:
+            return super.onOptionsItemSelected(item);
+    }
+}
+```
+
+#### 3. 增加返回上一页操作
+- `AndroidManifest.xml`文件中，在需要增加的`Activity`的标签里添加`父Activity`
+```
+<activity
+    android:name=".ui.NewsDetailActivity"
+    android:parentActivityName=".ui.MainActivity">
+</activity>
+```
+- 在`onCreate`方法里调用`ActionBar.setDisplayHomeAsUpEnabled`方法
+```
+mActionBar = getSupportActionBar();
+if (mActionBar != null) {
+    mActionBar.setDisplayHomeAsUpEnabled(true);
+}
+```
+
+#### 4. 增加Action视图
+- 在`<item>`标签里增加下面两个属性中的一个：
+-`actionViewClass`：实现action的工具类
+-`actionLayout`：描述action的组成的布局
+示例：
+```
+<item
+    android:id="@+id/action_search"
+    android:icon="@drawable/ic_search"
+    android:title="@string/action_search"
+    app:actionViewClass="android.support.v7.widget.SearchView"
+    app:showAsAction="ifRoom|collapseActionView"/>
+```
+
+#### 5. 配置Action视图
+在`onCreateOptionsMenu`回调方法里获取`ActionView`并配置
+```
+@Override
+public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.main_activity_actions, menu);
+
+    MenuItem searchItem = menu.findItem(R.id.action_search);
+    SearchView searchView =
+            (SearchView) MenuItemCompat.getActionView(searchItem);
+
+    // Configure the search info and add any event listeners...
+
+    return super.onCreateOptionsMenu(menu);
+}
+```
+
+#### 6. 响应Action视图的展开与收拢
+在`onCreateOptionsMenu`回调方法里，调用`MenuItemCompat.setOnActionExpandListener`设置回调方法
+```
+@Override
+public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.options, menu);
+    // ...
+
+    // Define the listener
+    OnActionExpandListener expandListener = new OnActionExpandListener() {
+        @Override
+        public boolean onMenuItemActionCollapse(MenuItem item) {
+            // Do something when action item collapses
+            return true;  // Return true to collapse action view
+        }
+
+        @Override
+        public boolean onMenuItemActionExpand(MenuItem item) {
+            // Do something when expanded
+            return true;  // Return true to expand action view
+        }
+    };
+
+    // Get the MenuItem for the action item
+    MenuItem actionMenuItem = menu.findItem(R.id.myActionItem);
+
+    // Assign the listener to that action item
+    MenuItemCompat.setOnActionExpandListener(actionMenuItem, expandListener);
+
+    // Any other things you have to do when creating the options menu…
+
+    return true;
+}
+```
+
+#### 7. 增加Action数据提供
+- 在`menu`中的`<item>`标签里增加`actionProviderClass`属性
+```
+<item android:id="@+id/action_share"
+    android:title="@string/share"
+    app:showAsAction="ifRoom"
+    app:actionProviderClass="android.support.v7.widget.ShareActionProvider"/>
+```
+- 在`onCreateOptionsMenu`回调里配置
+```
+MenuItem shareItem = menu.findItem(R.id.action_share);
+ShareActionProvider shareActionProvider = (ShareActionProvider) MenuItemCompat.getActionProvider(shareItem);
+
+Intent intent = new Intent(Intent.ACTION_SEND);
+intent.setType("text/*");
+intent.putExtra(Intent.EXTRA_STREAM, "Hello");
+
+shareActionProvider.setShareIntent(intent);
+```
+
 
 ## 四、Android系统积累
 
