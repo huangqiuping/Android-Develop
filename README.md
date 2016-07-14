@@ -300,12 +300,15 @@ DIRTY行后面没有匹配CLEAN或REMOVE行说明临时文件需要被删除。
 
 journal文件偶尔会被压缩用来减少冗余的行。临时文件“journal.tmp”在压缩时将会被使用，如果缓存被打开的话，如果它存在就应该把它删除掉。
 
-#### 9. 小结：
+#### 9. 小结
 - DiskLruCache使用了两个内部类，一个是DiskLruCache.Editor用来写入缓存信息，一个是DiskLruCache.Snapshot用来读取缓存文件。
 - 缓存文件分为CLEAN文件和DIRTY文件，CLEAN文件为缓存完成的文件，DIRTY文件用来临时标记正在修改。
 - journal文件记录了哪些关键字已经被缓存、哪些正在修改、哪些正在读取。
 - 缓存入口项同LruCache一样使用LinkedHashMap，能够直接调用LinkedHashMap.eldest()函数返回最久未被使用的项，省去了LRU算法的实现。
 - 整理空间已经重写journal操作留给了线程池单线程异步处理，一是防止了主线程阻塞问题，二是解决了同步问题。
+
+### 6、
+
 ## 二、Android Studio使用
 
 ### 1、配置属性
@@ -332,10 +335,21 @@ buildTypes {
 ```
 
 ### 2、插件使用
-1. GsonFormat
+#### 1. GsonFormat
 可以将json格式的数据快速转换成java代码
 
-
+#### 2. ButterKnife使用
+ButterKnife是一个可以按指定的布局文件，使用注解方式生成相应控件代码。
+- 安装`Android ButterKnife Zelezny`
+- 在`build.gradle`文件里添加编译依赖
+```
+compile 'com.jakewharton:butterknife:6.1.0'
+```
+- 将光标移动到布局文件名上，选择`Generate`->`Generate ButterKnife Injections`，选中需要生成控制代码的控件名就可以了。
+- 在`onCreate()`方法里调用
+```
+ButterKnife.inject(this);
+```
 
 
 ## 三、Android应用积累
@@ -646,6 +660,164 @@ intent.putExtra(Intent.EXTRA_STREAM, "Hello");
 shareActionProvider.setShareIntent(intent);
 ```
 
+### 5、保存数据至SQL数据库
+
+#### 1. 定义数据库的相关信息
+
+通常在一个类里定义数据库需要存在数据的相关信息，如`TABLE_NAME`、`COLUMN_NEWS_ID`等。
+
+```
+public class NewsEntry implements BaseColumns {
+    public static final String TABLE_FAV_NEWS_NAME = "news_fav";
+    public static final String TABLE_LATEST_NEWS_NAME = "news_latest";
+    public static final String COLUMN_ID = "_id";
+    public static final String COLUMN_NEWS_ID = "news_id";
+    public static final String COLUMN_NEWS_TITLE = "news_title";
+    public static final String COLUMN_NEWS_IMAGE = "news_image";
+}
+```
+
+#### 2. 使用 SQL 辅助工具创建数据库
+
+`SQLiteOpenHelper` 类中有一组有用的 API。当您使用此类获取对您数据库的引用时，系统将只在需要之时而不是 应用启动过程中执行可能长期运行的操作：创建和更新数据库。 您只需调用 `getWritableDatabase()` 或 `getReadableDatabase()`。
+
+> 注意：由于它们可能长期运行，因此请确保您在后台线程中调用 getWritableDatabase() 或 getReadableDatabase() ， 比如使用 AsyncTask 或 IntentService。
+
+
+```
+public class DailyNewsDBHelper extends SQLiteOpenHelper {
+    public static final int DATABASE_VERSION = 1;
+    public static final String DATABASE_NAME = "daily_news.db";
+
+    private static final String TEXT_TYPE = " TEXT";
+    private static final String INTEGER_TYPE = " INTEGER UNIQUE";
+    private static final String COMMA_SEP = ",";
+    private static final String SQL_CREATE_FAV_NEWS_ENTRIES = "CREATE TABLE " + NewsEntry.TABLE_FAV_NEWS_NAME + " (" +
+            NewsEntry.COLUMN_ID + " INTEGER PRIMARY KEY," +
+            NewsEntry.COLUMN_NEWS_ID + INTEGER_TYPE + COMMA_SEP +
+            NewsEntry.COLUMN_NEWS_TITLE + TEXT_TYPE + COMMA_SEP +
+            NewsEntry.COLUMN_NEWS_IMAGE + TEXT_TYPE +
+            " )";
+
+    private static final String SQL_CREATE_LATEST_NEWS_ENTRIES = "CREATE TABLE " + NewsEntry.TABLE_LATEST_NEWS_NAME + " (" +
+            NewsEntry.COLUMN_ID + " INTEGER PRIMARY KEY," +
+            NewsEntry.COLUMN_NEWS_ID + INTEGER_TYPE + COMMA_SEP +
+            NewsEntry.COLUMN_NEWS_TITLE + TEXT_TYPE + COMMA_SEP +
+            NewsEntry.COLUMN_NEWS_IMAGE + TEXT_TYPE +
+            " )";
+
+    private static final String SQL_DELETE_FAV_ENTRIES = "DROP TABLE IF EXISTS " + NewsEntry.TABLE_FAV_NEWS_NAME;
+    private static final String SQL_DELETE_LATEST_ENTRIES = "DROP TABLE IF EXISTS " + NewsEntry.TABLE_LATEST_NEWS_NAME;
+
+    public DailyNewsDBHelper(Context context) {
+        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+    }
+
+    @Override
+    public void onCreate(SQLiteDatabase db) {
+        db.execSQL(SQL_CREATE_FAV_NEWS_ENTRIES);
+        db.execSQL(SQL_CREATE_LATEST_NEWS_ENTRIES);
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        db.execSQL(SQL_DELETE_FAV_ENTRIES);
+        db.execSQL(SQL_DELETE_LATEST_ENTRIES);
+
+        onCreate(db);
+    }
+
+    @Override
+    public void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        onUpgrade(db, oldVersion, newVersion);
+    }
+}
+```
+
+#### 3. 将数据插入至数据库
+通过将一个 `ContentValues` 对象传递至 `insert()` 方法将数据插入数据库：
+```
+ContentValues values = new ContentValues();
+values.put(NewsEntry.COLUMN_NEWS_ID, news.getId());
+values.put(NewsEntry.COLUMN_NEWS_TITLE, news.getTitle());
+if (news.getImages().size() > 0) {
+    values.put(NewsEntry.COLUMN_NEWS_IMAGE, news.getImages().get(0));
+}
+mDatabase.insert(NewsEntry.TABLE_FAV_NEWS_NAME, null, values);
+```
+
+#### 4. 从数据库读取数据
+要从数据库中读取信息，请使用 `query()` 方法，将其传递至选择条件和所需列。该方法结合 `insert()` 和 `update()` 的元素，除非列列表定义了您希望获取的数据，而不是希望插入的数据。 查询的结果将在 `Cursor` 对象中返回给您。
+
+```
+cursor = mDatabase.query(NewsEntry.TABLE_FAV_NEWS_NAME, null, null, null, null, null, null);
+
+if (cursor.moveToFirst()) {
+    do {
+        News news = new News();
+        news.setId(cursor.getInt(1));
+        news.setTitle(cursor.getString(2));
+        String imageUrl = cursor.getString(3);
+        ArrayList<String> images = new ArrayList<>();
+        images.add(imageUrl);
+        news.setImages(images);
+
+        newsList.add(news);
+    } while (cursor.moveToNext());
+}
+
+cursor.close();
+```
+
+完整一点的参考：
+```
+SQLiteDatabase db = mDbHelper.getReadableDatabase();
+
+// Define a projection that specifies which columns from the database
+// you will actually use after this query.
+String[] projection = {
+    FeedEntry._ID,
+    FeedEntry.COLUMN_NAME_TITLE,
+    FeedEntry.COLUMN_NAME_UPDATED,
+    ...
+    };
+
+// How you want the results sorted in the resulting Cursor
+String sortOrder =
+    FeedEntry.COLUMN_NAME_UPDATED + " DESC";
+
+Cursor c = db.query(
+    FeedEntry.TABLE_NAME,  // The table to query
+    projection,                               // The columns to return
+    selection,                                // The columns for the WHERE clause
+    selectionArgs,                            // The values for the WHERE clause
+    null,                                     // don't group the rows
+    null,                                     // don't filter by row groups
+    sortOrder                                 // The sort order
+    );
+```
+
+### 6、设置文本显示字体
+```
+Typeface font = Typeface.createFromAsset(getAssets(), "splash.ttf");
+textView.setTypeface(font);
+```
+
+### 7、简单的倒计时操作
+```
+new CountDownTimer(30000, 1000) {
+
+   public void onTick(long millisUntilFinished) {
+       mTextField.setText("seconds remaining: " + millisUntilFinished / 1000);
+   }
+
+   public void onFinish() {
+       mTextField.setText("done!");
+   }
+}.start();
+```
+
+> `onTick()`回调是阻塞的。
 
 ## 四、Android系统积累
 
